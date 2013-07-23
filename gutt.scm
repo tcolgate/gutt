@@ -64,7 +64,7 @@
         #f))
     (cdr *windowlist*)))
 
-(define *pricnt*       (make-parameter 3))
+(define *pricnt*       (make-parameter 1))
 (define *changedelta*  (make-parameter 0.1))
 (define *prisecratio*  (make-parameter 0.5))
 
@@ -106,15 +106,15 @@
                 ((eq? scs '()) 1)
                 (else (*prisecratio*))))
          (mnh (* (lines) rat))
-         (sch (- (lines) prh))
-         (prc (length mns))
+         (sch (- (lines) mnh))
+         (mnc (length mns))
          (scc (length scs)))
    (map
      (lambda (w x)
        (set-cgonad:window:ncurseswin! 
          w
-         (newwin (* (lines) rat) (/ (cols) prc) 0 w))
-       (+ w (/ (cols) prc)))
+         (newwin (* (lines) rat) (/ (cols) mnc) 0 w))
+       (+ w (/ (cols) mnc)))
      0
      mns) 
   (map
@@ -178,12 +178,12 @@
      ((eqv? ch #\q)
       quitGutt)
      ((eqv? ch #\-)
-      (set! *sidebarw* (- *sidebarw* 1))
+      (*prisecratio* (max 0.0 (- (*prisecratio*) (*changedelta*))))
       (relay)
       (redraw)
       (loop (getch stdscr)))
      ((eqv? ch #\+)
-      (set! *sidebarw* (+ *sidebarw* 1))
+      (*prisecratio* (min 1.0 (+ (*prisecratio*) (*changedelta*))))
       (relay)
       (redraw)
       (loop (getch stdscr)) )
