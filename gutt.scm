@@ -64,7 +64,7 @@
         #f))
     (cdr *windowlist*)))
 
-(define *pricnt*       (make-parameter 1))
+(define *pricnt*       (make-parameter 3))
 (define *changedelta*  (make-parameter 0.1))
 (define *prisecratio*  (make-parameter 0.5))
 
@@ -92,7 +92,7 @@
      (lambda (w x)
        (set-cgonad:window:ncurseswin! 
          w
-         (newwin sch (inexact->exact (round (/ (cols) scc))) (- (lines) mnh) x))
+         (newwin sch (inexact->exact (round (/ (cols) scc))) mnh x))
        (+ x (inexact->exact (round (/ (cols) scc)))))
      0
      scs)))
