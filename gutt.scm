@@ -64,7 +64,7 @@
         #f))
     (cdr *windowlist*)))
 
-(define *pricnt*       (make-parameter 1))
+(define *pricnt*       (make-parameter 0))
 (define *changedelta*  (make-parameter 0.1))
 (define *prisecratio*  (make-parameter 0.5))
 
@@ -97,7 +97,7 @@
      0
      scs)))
 
-(define (full-layout)
+(define (tall-layout)
   (let* ((cnt (min (length *windowlist*) (*pricnt*)))
          (mns (take *windowlist* cnt))
          (scs (drop *windowlist* cnt))
@@ -105,26 +105,27 @@
                 ((eq? mns '()) 0)
                 ((eq? scs '()) 1)
                 (else (*prisecratio*))))
-         (mnh (* (lines) rat))
-         (sch (- (lines) mnh))
-         (mnc (length mns))
+         (mnw (inexact->exact (round (* (cols) rat))))
+         (scw (inexact->exact (round (- (cols) mnw))))
+         (prc (length mns))
          (scc (length scs)))
-   (map
-     (lambda (w x)
+   (fold
+     (lambda (w y)
        (set-cgonad:window:ncurseswin! 
          w
-         (newwin (* (lines) rat) (/ (cols) mnc) 0 w))
-       (+ w (/ (cols) mnc)))
+         (newwin (inexact->exact (round (/ (lines) prc))) mnw y 0))
+       (+ y (inexact->exact (round (/ (lines) prc)))))
      0
      mns) 
-  (map
-     (lambda (w x)
+  (fold
+     (lambda (w y)
        (set-cgonad:window:ncurseswin! 
          w
-         (newwin (* (lines) rat) (/ (cols) scc) (- (lines)  (* (lines) rat)) w))
-       (+ w (/ (cols) scc)))
+         (newwin (inexact->exact (round (/ (lines) scc))) scw y mnw))
+       (+ y (inexact->exact (round (/ (lines) scc)))))
      0
      scs)))
+
 
 ;(define (relay)
 ;  (let* ((sb (car *windowlist*))
@@ -136,7 +137,7 @@
 ;      mn
 ;      (newwin (lines) 0 0 (*sidebarw*)))))
 
-(define *currlayout* (make-parameter wide-layout))
+(define *currlayout* (make-parameter tall-layout))
 
 (define (relay)
   ((*currlayout*)))
