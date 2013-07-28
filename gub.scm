@@ -6,6 +6,7 @@
 (use-modules (ncurses curses)
              (srfi srfi-1)
              (srfi srfi-9)
+             (ice-9 pretty-print)
              (ice-9 receive)
              (srfi srfi-39)
              (web uri)
@@ -39,7 +40,14 @@
  (let* ((body  
           (string->utf8
             (call-with-output-string
-              (lambda (p) (sxml->xml (sxmlrpc (request 'identify "hello")) p)))))
+              (lambda (p) (sxml->xml 
+                            (sxmlrpc
+                              (request 'User.login 
+                                       (struct
+                                         ('login    "TristanC@blinkbox.com")
+                                         ('password "password")
+                                         ('remember #t))))
+                            p)))))
         (body-len (bytevector-length body))
         (port (session-record-port client))
         (req (build-request uri
@@ -54,19 +62,20 @@
    ;; Flush port
    (force-output port) 
    ;; Read and return server response
-   (display (utf8->string (read-response-body (read-response port))))
-   (newline) 
+   (let* ((resp (read-response port))
+          (hds  (response-headers resp))
+          (bod  (xmlrpc-response-params 
+                  (xmlrpc-string->scm 
+                    (utf8->string 
+                      (read-response-body 
+                        resp))))))
 
-   ;; Send data over the TLS record layer.
-   ;   (receive (res body) 
-   ;                (http-get uri
-   ;                          #:port 
-   ;                          #:keep-alive? #t )
-   ;                (bye client close-request/rdwr)
-   ;                (display res) (newline))
+     (pretty-print hds)(newline)
+     (pretty-print bod)(newline))
+   
+    
 
-   ;; Terminate the TLS session.
-
+   (bye client close-request/rdwr)
    (close sock))) 
 
 
