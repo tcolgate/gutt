@@ -7,8 +7,7 @@
              (srfi srfi-1)
              (srfi srfi-9)
              (ice-9 pretty-print)
-             (ice-9 receive)
-             (srfi srfi-39)
+             (ice-9 receive) (srfi srfi-39)
              (web uri)
              (web client)
              (web request)
@@ -25,61 +24,80 @@
 ;(define uri (string->uri "https://www.google.com/"))
 (define uri (string->uri "https://bugzilla.mediagraft.com:1443/xmlrpc.cgi"))
 
-(let ((client (make-session connection-end/client))
-      (sock   (open-socket-for-uri uri)) 
-      (cred   (make-certificate-credentials)))
+(define (https-req uri method body)
+  (let* ((socket (open-socket-for-uri uri))
+         (TCP_NODELAY 1)
+         (TCP_CORK 3)
+         (session (make-session connection-end/client)))
+    ;; (set-log-level! 9)
+    ;; (set-log-procedure!
+    ;;  (lambda (level msg) (format #t "|<~d>| ~a" level msg)))
 
- (set-log-level! 0)
- (set-session-default-priority! client) 
- (set-certificate-credentials-x509-trust-file! cred "/etc/ssl/certs/ca-certificates.crt" x509-certificate-format/pem)
- (set-session-credentials! client cred) 
+    ; This may need to be done in open-socket-for-uri
+    (setsockopt socket IPPROTO_TCP TCP_NODELAY 1) 
 
- (set-session-transport-fd! client (fileno sock)) 
- (handshake client) 
+    ;; Use the file descriptor that underlies SOCKET.
+    (set-session-transport-fd! session (fileno socket))
 
- (let* ((body  
-          (string->utf8
-            (call-with-output-string
-              (lambda (p) (sxml->xml 
-                            (sxmlrpc
-                              (request 'User.login 
-                                       (struct
-                                         ('login    "TristanC@blinkbox.com")
-                                         ('password "password")
-                                         ('remember #t))))
-                            p)))))
-        (body-len (bytevector-length body))
-        (port (session-record-port client))
-        (req (build-request uri
-                            #:method 'POST
-                            #:port  port
-                            #:headers `((content-type . (text/xml))
-                                        (content-length . ,body-len))))) 
+    ;; Use the default settings.
+    (set-session-priorities! session "NORMAL")
+    ;(set-session-default-priority! session) 
+    ;
 
-   (write-request-body
-     (write-request req port)
-     body) 
-   ;; Flush port
-   (force-output port) 
-   ;; Read and return server response
-   (let* ((resp (read-response port))
-          (hds  (response-headers resp))
-          (bod  (xmlrpc-response-params 
-                  (xmlrpc-string->scm 
-                    (utf8->string 
-                      (read-response-body 
-                        resp))))))
+    ;; Create anonymous credentials.
+    (set-session-credentials! session
+                              (make-anonymous-client-credentials))
+    (set-session-credentials! session
+                              (make-certificate-credentials))
+    ;(set-certificate-credentials-x509-trust-file! cred "/etc/ssl/certs/ca-certificates.crt" x509-certificate-format/pem)
 
-     (pretty-print hds)(newline)
-     (pretty-print bod)(newline))
-   
-    
+    ;; Perform the TLS handshake with the server.
+    (handshake session)
 
-   (bye client close-request/rdwr)
-   (close sock))) 
+    (let* ((port (session-record-port session))
+           (body  
+             (string->utf8
+               body))  
+           (body-len (bytevector-length body))
+           (req (build-request uri
+                               #:method method
+                               #:port port
+                               #:headers `((content-type . (text/xml))
+                                           (content-length . ,body-len)))))
+     (write-request-body
+       (write-request req port)
+       body) 
 
+     ;; Flush port
+     (force-output port) 
 
- 
+     ;; Read and return server response
+     (let* ((resp (read-response port))
+            (bod  (read-response-body 
+                    resp)))
 
+       (bye session close-request/rdwr) 
+       (close port)
+       (values resp bod)))))
 
+(let* ((reqbody  (call-with-output-string 
+                   (lambda (p) (sxml->xml 
+                                 (sxmlrpc
+                                   (request 'User.login 
+                                            (struct
+                                              ('login    "TristanC@blinkbox.com")
+                                              ('password "password")
+                                              ('remember #t))))
+                                 p)))))
 
+  (receive (response body)
+           (https-req uri 'POST reqbody)
+           (pretty-print response)
+           (newline)
+           (pretty-print
+             (xmlrpc-response-params 
+               (xmlrpc-string->scm 
+                 (utf8->string 
+                   body))))
+
+           (newline))) 
