@@ -24,7 +24,7 @@
 ;(define uri (string->uri "https://www.google.com/"))
 (define uri (string->uri "https://bugzilla.mediagraft.com:1443/xmlrpc.cgi"))
 
-(define (https-req uri method body)
+(define (make-https-session uri)
   (let* ((socket (open-socket-for-uri uri))
          (TCP_NODELAY 1)
          (TCP_CORK 3)
@@ -54,50 +54,60 @@
     ;; Perform the TLS handshake with the server.
     (handshake session)
 
-    (let* ((port (session-record-port session))
-           (body  
-             (string->utf8
-               body))  
-           (body-len (bytevector-length body))
-           (req (build-request uri
-                               #:method method
-                               #:port port
-                               #:headers `((content-type . (text/xml))
-                                           (content-length . ,body-len)))))
-     (write-request-body
-       (write-request req port)
-       body) 
+    (values
+      (lambda* (method body headers) 
+               (let* ((port (session-record-port session))
+                      (body  
+                        (string->utf8
+                          body))  
+                      (body-len (bytevector-length body))
+                      (req (build-request uri
+                                          #:method method
+                                          #:port port
+                                          #:headers (append 
+                                                      headers
+                                                      `((content-length . ,body-len))))))
+                 (write-request-body
+                   (write-request req port)
+                   body) 
 
-     ;; Flush port
-     (force-output port) 
+                 ;; Flush port
+                 (force-output port) 
 
-     ;; Read and return server response
-     (let* ((resp (read-response port))
-            (bod  (read-response-body 
-                    resp)))
+                 ;; Read and return server response
+                 (let* ((resp (read-response port))
+                        (bod  (read-response-body 
+                                resp)))
+                   (values resp bod)))) 
 
-       (bye session close-request/rdwr) 
-       (close port)
-       (values resp bod)))))
+      (lambda* ()
+               (bye session close-request/rdwr)
+               (close (session-record-port session))))))
 
-(let* ((reqbody  (call-with-output-string 
-                   (lambda (p) (sxml->xml 
-                                 (sxmlrpc
-                                   (request 'User.login 
-                                            (struct
-                                              ('login    "TristanC@blinkbox.com")
-                                              ('password "password")
-                                              ('remember #t))))
-                                 p)))))
+(receive (sender closer)
+         (make-https-session uri) 
+         (let* ((reqbody  (call-with-output-string 
+                            (lambda (p) (sxml->xml 
+                                          (sxmlrpc
+                                            (request 'User.login 
+                                                     (struct
+                                                       ('login    "TristanC@blinkbox.com")
+                                                       ('password "")
+                                                       ('remember #t))))
+                                          p))))
+                (headers '((content-type . (text/xml)))))
 
-  (receive (response body)
-           (https-req uri 'POST reqbody)
-           (pretty-print response)
-           (newline)
-           (pretty-print
-             (xmlrpc-response-params 
-               (xmlrpc-string->scm 
-                 (utf8->string 
-                   body))))
+           (receive (response body)
+                    (sender 'POST reqbody headers)
+                    (pretty-print response)
+                    (newline)
+                    (pretty-print
+                      (xmlrpc-response-params 
+                        (xmlrpc-string->scm 
+                          (utf8->string 
+                            body))))
 
-           (newline))) 
+                    (newline)))
+         (closer))
+
+ 
