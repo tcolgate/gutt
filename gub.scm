@@ -4,8 +4,9 @@
 (add-to-load-path ".")
 
 (use-modules (ncurses curses)
-             (srfi srfi-1)
-             (srfi srfi-9)
+             (srfi srfi-1)  ; list functions
+             (srfi srfi-9)  ;
+             (srfi srfi-11) ; let-values
              (ice-9 pretty-print)
              (ice-9 receive) (srfi srfi-39)
              (web uri)
@@ -23,6 +24,10 @@
 
 ;(define uri (string->uri "https://www.google.com/"))
 (define uri (string->uri "https://bugzilla.mediagraft.com:1443/xmlrpc.cgi"))
+
+(define *password* (make-parameter #f))
+
+(load ".gubrc")
 
 (define (make-https-session uri)
   (let* ((socket (open-socket-for-uri uri))
@@ -84,30 +89,34 @@
                (bye session close-request/rdwr)
                (close (session-record-port session))))))
 
-(receive (sender closer)
-         (make-https-session uri) 
-         (let* ((reqbody  (call-with-output-string 
-                            (lambda (p) (sxml->xml 
-                                          (sxmlrpc
-                                            (request 'User.login 
-                                                     (struct
-                                                       ('login    "TristanC@blinkbox.com")
-                                                       ('password "")
-                                                       ('remember #t))))
-                                          p))))
-                (headers '((content-type . (text/xml)))))
+(define* (make-xmlrpc-caller uri)
+         (receive 
+           (sender closer)
+           (make-https-session uri) 
+           (values 
+             ; caller
+             (lambda (req) 
+               (let* ((reqbody  (call-with-output-string (lambda (p) (sxml->xml req p))))
+                      (headers '((content-type . (text/xml)))))
+                 (receive 
+                   (response body)
+                   (sender 'POST reqbody headers) 
+                   (values 
+                     response
+                     (xmlrpc-string->scm 
+                       (utf8->string body))))))
+             ; closer
+             closer)))
 
-           (receive (response body)
-                    (sender 'POST reqbody headers)
-                    (pretty-print response)
-                    (newline)
-                    (pretty-print
-                      (xmlrpc-response-params 
-                        (xmlrpc-string->scm 
-                          (utf8->string 
-                            body))))
-
-                    (newline)))
-         (closer))
-
- 
+(let-values (((caller closer) (make-xmlrpc-caller uri))) 
+ (receive 
+   (response body) 
+   (caller (sxmlrpc
+             (request 'User.login 
+                      (struct
+                        ('login    "TristanC@blinkbox.com")
+                        ('password ,(*password*))
+                        ('remember #t)))))
+   (closer)
+   (pretty-print response)(newline)
+   (pretty-print body)(newline)))
