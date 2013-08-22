@@ -23,7 +23,7 @@
 (define *dh-bits* 1024)
 
 ;(define uri (string->uri "https://www.google.com/"))
-(define uri (string->uri "https://bugzilla.mediagraft.com:1443/xmlrpc.cgi"))
+(define uri (string->uri "https://bugzilla.blinkboxmusic.com/xmlrpc.cgi"))
 
 (define *password* (make-parameter #f))
 
@@ -60,6 +60,7 @@
     (handshake session)
 
     (values
+      ; sender
       (lambda* (method body headers) 
                (let* ((port (session-record-port session))
                       (body  
@@ -74,17 +75,16 @@
                                                       `((content-length . ,body-len))))))
                  (write-request-body
                    (write-request req port)
-                   body) 
-
+                   body)
                  ;; Flush port
                  (force-output port) 
 
                  ;; Read and return server response
                  (let* ((resp (read-response port))
-                        (bod  (read-response-body 
-                                resp)))
+                        (bod  (read-response-body resp)))
                    (values resp bod)))) 
 
+      ; close
       (lambda* ()
                (bye session close-request/rdwr)
                (close (session-record-port session))))))
@@ -103,20 +103,53 @@
                    (sender 'POST reqbody headers) 
                    (values 
                      response
+                     
                      (xmlrpc-string->scm 
-                       (utf8->string body))))))
+                       (utf8->string body))
+                     ;(utf8->string body)
+                     
+                     ))))
              ; closer
              closer)))
 
 (let-values (((caller closer) (make-xmlrpc-caller uri))) 
- (receive 
-   (response body) 
-   (caller (sxmlrpc
-             (request 'User.login 
-                      (struct
-                        ('login    "TristanC@blinkbox.com")
-                        ('password ,(*password*))
-                        ('remember #t)))))
-   (closer)
-   (pretty-print response)(newline)
-   (pretty-print body)(newline)))
+            
+;            (receive 
+;              (response body) 
+;
+;              (caller (sxmlrpc
+;                        (request 'User.login 
+;                                 (struct
+;                                   ('login    "TristanC@blinkbox.com")
+;                                   ('password ,(*password*))
+;                                   ('remember #t))))) 
+;
+;              ;   (caller (sxmlrpc
+;              ;             (request 'get_selectable_products
+;              ;                      (struct
+;              ;                        ('Bugzilla_login    "TristanC@blinkbox.com")
+;              ;                        ('Bugzilla_password ,(*password*)))))) 
+;
+;              (pretty-print response)(newline)
+;              (pretty-print body)(newline) ) 
+
+            (receive 
+              (response body) 
+
+              ;(caller (sxmlrpc
+              ;          (request 'User.login 
+              ;                   (struct
+              ;                     ('login    "TristanC@blinkbox.com")
+              ;                     ('password ,(*password*))
+              ;                     ('remember #t))))) 
+
+              (caller (sxmlrpc
+                        (request 'Product.get_selectable_products
+                                 (struct
+                                   ('Bugzilla_login    "TristanC@blinkbox.com")
+                                   ('Bugzilla_password ,(*password*)))))) 
+
+              (pretty-print response)(newline)
+              (pretty-print body)(newline)) 
+
+            (closer))
